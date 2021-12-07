@@ -170,7 +170,60 @@ listening on lo, link-type EN10MB (Ethernet), capture size 262144 bytes
 
 由于我们传输的是字节流，字节流连在一起无法辨认哪些字节是属于谁的，因此我们可以定义一个协议
 
-在每个数据发出去之前，在它前面加上这个数据的长度字段，指明这个数据包的真实长度
+**通过定义通信协议(protocol)，可以解决粘包、拆包问题。协议的作用就定义传输数据的格式。**这样在接受到的数据的时候：
+
+- 如果粘包了，就可以根据这个格式来区分不同的包
+- 如果拆包了，就等待数据可以构成一个完整的消息来处理。
+
+
+
+**变长协议**
+
+将消息区分为消息头和消息体，在消息头中，我们使用一个整形数字，例如一个int，来表示消息体的长度。而消息体实际实际要发送的二进制数据字节。
+
+在变长协议中：
+
+- 发送方，发送数据之前，需要先获取需要发送内容的二进制字节大小，然后在需要发送的内容前面添加一个整数，表示消息体二进制字节的长度。
+
+- ```java
+  /**
+       * 添加消息头,表示消息体的长度
+       * @param i 32位有符号整数
+       * @return  bytes数组长度是4,bytes[3]对应i的低8位,bytes[0]对应i的高8位...
+       */
+  public static byte[] int2Bytes(int i) {
+      byte[] result = new byte[4];
+      result[0] = (byte) (i >> 24 & 0xFF);
+      result[1] = (byte) (i >> 16 & 0xFF);
+      result[2] = (byte) (i >> 8 & 0xFF);
+      result[3] = (byte) (i & 0xFF);
+      return result;
+  }
+  ```
+
+- ```java
+  /**
+       * 解析消息头，得到数据包的真实长度
+       * 此处需要使用 类似0xFF来得到int值,类似于
+       *      int num = bytes[3]是错误的
+       * 因为byte是8个字节,范围只有-128-127,当0xff赋给byte的时候,byte显示的是-1
+       * (byte)0xff = -1
+       * (int)0xff = 255
+       * @param bytes
+       * @return
+       */
+  public static int bytes2Int(byte[] bytes){
+      int num = bytes[3] & 0xFF;
+      num |= ((bytes[2] << 8) & 0xFF00);
+      num |= ((bytes[1] << 16) & 0xFF0000);
+      num |= ((bytes[0] << 24)  & 0xFF000000);
+      return num;
+  }
+  ```
+
+- 接收方，在解析时，先读取内容长度Length，其值为实际消息体内容(Content)占用的字节数，之后必须读取到这么多字节的内容，才认为是一个完整的数据报文。
+
+
 
 解决方案的代码在`ServerWorker`和`ClientWorker`中写到了。
 ![image](https://user-images.githubusercontent.com/56396192/144971883-38dd5ee8-47cd-4f5d-8f11-ede235721c84.png)
